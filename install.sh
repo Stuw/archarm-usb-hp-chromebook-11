@@ -36,16 +36,26 @@ else
 fi
 
 OSHOST="http://archlinuxarm.org/os/"
-OSFILE="ArchLinuxARM-peach-latest.tar.gz"
+#OSFILE="ArchLinuxARM-peach-latest.tar.gz"
+OSFILE="ArchLinuxARM-armv7-chromebook-latest.tar.gz"
 BOOTFILE="boot.scr.uimg"
 UBOOTHOST="https://github.com/omgmog/nv_uboot-spring/raw/master/"
 UBOOTFILE="nv_uboot-spring.kpart.gz"
-GITHUBUSER="omgmog"
+GITHUBUSER="Stuw"
 REPOFILES="https://raw.githubusercontent.com/${GITHUBUSER}/archarm-usb-hp-chromebook-11"
-echo "Getting working cgpt binary"
-mkdir -p /usr/local/bin
-wget ${REPOFILES}/master/deps/cgpt --output-document=/usr/local/bin/cgpt
-chmod +x /usr/local/bin/cgpt
+
+log "Ensure cgpt is available"
+if (which cgpt >/dev/null 2>&1 ); then
+	echo "cgpt is installed"
+	cgpt="cgpt"
+else
+	echo "Getting working cgpt binary"
+	mkdir -p /usr/local/bin
+	curl -L ${REPOFILES}/master/deps/cgpt -o /usr/local/bin/cgpt
+	chmod +x /usr/local/bin/cgpt
+	cgpt="/usr/local/bin/cgpt"
+fi
+
 if [ $DEVICE = $EMMC ]; then
     if [ -L /usr/sbin ]; then
 	rm -f /usr/sbin
@@ -63,12 +73,12 @@ if [ $DEVICE = $EMMC ]; then
 else
     log "Ensuring the proper paritioning tools are availible"
     if (which parted > /dev/null 2>&1 ); then 
-	echo "parted is installed. Installation can proceed"
+		echo "parted is installed. Installation can proceed"
     else 
-	echo "parted must be downloaded !"
-	log "When prompted to install virtual/target-os-dev press N"
-	dev_install
-	emerge parted
+		echo "parted must be downloaded !"
+		log "When prompted to install virtual/target-os-dev press N"
+		dev_install
+		emerge parted
     fi
 fi
 
@@ -77,13 +87,13 @@ for mnt in `mount | grep ${DEVICE} | awk '{print $1}'`;do
     umount ${mnt}
 done
 parted ${DEVICE} mklabel gpt
-/usr/local/bin/cgpt create -z ${DEVICE}
-/usr/local/bin/cgpt create ${DEVICE}
-/usr/local/bin/cgpt add -i 1 -t kernel -b 8192 -s 32768 -l U-Boot -S 1 -T 5 -P 10 ${DEVICE}
-/usr/local/bin/cgpt add -i 2 -t data -b 40960 -s 32768 -l Kernel ${DEVICE}
-/usr/local/bin/cgpt add -i 12 -t data -b 73728 -s 32768 -l Script ${DEVICE}
-PARTSIZE=`/usr/local/bin/cgpt show ${DEVICE} | grep 'Sec GPT table' | egrep -o '[0-9]+' | head -n 1`
-/usr/local/bin/cgpt add -i 3 -t data -b 106496 -s `expr ${PARTSIZE} - 106496` -l Root ${DEVICE}
+"$cgpt" create -z ${DEVICE}
+"$cgpt" create ${DEVICE}
+"$cgpt" add -i 1 -t kernel -b 8192 -s 32768 -l U-Boot -S 1 -T 5 -P 10 ${DEVICE}
+"$cgpt" add -i 2 -t data -b 40960 -s 32768 -l Kernel ${DEVICE}
+"$cgpt" add -i 12 -t data -b 73728 -s 32768 -l Script ${DEVICE}
+PARTSIZE=`"$cgpt" show ${DEVICE} | grep 'Sec GPT table' | egrep -o '[0-9]+' | head -n 1`
+"$cgpt" add -i 3 -t data -b 106496 -s `expr ${PARTSIZE} - 106496` -l Root ${DEVICE}
 partprobe ${DEVICE}
 mkfs.ext2 $P2
 mkfs.ext4 $P3
@@ -93,7 +103,7 @@ cd /tmp
 
 if [ ! -f "${OSFILE}" ]; then
     log "Downloading ${OSFILE}"
-    wget ${OSHOST}${OSFILE}
+    curl -L ${OSHOST}${OSFILE} -o ${OSFILE}
 else
     log "Looks like you already have ${OSFILE}"
 fi
@@ -116,17 +126,17 @@ mount --rbind /sys root/sys/
 mount --rbind /dev root/dev/
 log "downloading old version of systemd and pacman.conf"
 rm root/etc/pacman.conf
-wget ${REPOFILES}/master/deps/systemd-212-3-armv7h.pkg.tar.xz --output-document=root/systemd-212-3-armv7h.pkg.tar.xz
-wget ${REPOFILES}/master/deps/pacman.conf --output-document=root/etc/pacman.conf
-wget ${REPOFILES}/master/post-install.sh --output-document=root/post-install.sh
+curl -L ${REPOFILES}/master/deps/systemd-212-3-armv7h.pkg.tar.xz -o root/systemd-212-3-armv7h.pkg.tar.xz
+curl -L ${REPOFILES}/master/deps/pacman.conf -o root/etc/pacman.conf
+curl -L ${REPOFILES}/master/post-install.sh -o root/post-install.sh
 log "downloading systemd fix script"
-wget ${REPOFILES}/master/fix-systemd.sh --output-document=root/fix-systemd.sh
+curl -L ${REPOFILES}/master/fix-systemd.sh -o root/fix-systemd.sh
 chmod +x root/fix-systemd.sh
 chroot root/ /bin/bash -c "/fix-systemd.sh"
 
 if [ ! -f "root/boot/${BOOTFILE}" ]; then
     log "Downloading ${BOOTFILE}"
-    wget -O "root/boot/${BOOTFILE}" "${OSHOST}exynos/${BOOTFILE}"
+    curl -L -o "root/boot/${BOOTFILE}" "${OSHOST}exynos/${BOOTFILE}"
 else
     log "Looks like we already have boot.scr.uimg"
 fi
@@ -168,7 +178,7 @@ if [ $DEVICE = $EMMC ]; then
 else
     if [ ! -f "${UBOOTFILE}" ]; then
         log "Downloading ${UBOOTFILE}"
-        wget ${UBOOTHOST}${UBOOTFILE}
+        curl -L ${UBOOTHOST}${UBOOTFILE} -o ${UBOOTFILE}
     else
         log "Looks like you already have ${UBOOTFILE}"
     fi
