@@ -43,6 +43,7 @@ UBOOTHOST="https://github.com/omgmog/nv_uboot-spring/raw/master/"
 UBOOTFILE="nv_uboot-spring.kpart.gz"
 GITHUBUSER="Stuw"
 REPOFILES="https://raw.githubusercontent.com/${GITHUBUSER}/archarm-usb-hp-chromebook-11"
+ARCH="$(uname -m)"
 
 log "Ensure cgpt is available"
 if (which cgpt >/dev/null 2>&1 ); then
@@ -62,7 +63,7 @@ if [ $DEVICE = $EMMC ]; then
     fi
     # for eMMC we need to get some things before we can partition
     pacman -Syu --needed packer devtools-alarm base-devel git libyaml parted dosfstools parted
-    pacman -S --needed --noconfirm vboot-utils 
+    pacman -S --needed --noconfirm vboot-utils
     log "When prompted to modify PKGBUILD for trousers, set arch to armv7h"
     useradd -c 'Build user' -m build
     su -c "packer -S trousers" build
@@ -71,33 +72,47 @@ if [ $DEVICE = $EMMC ]; then
 	ln -s /usr/bin /usr/sbin
     fi
 else
-    log "Ensuring the proper paritioning tools are availible"
-    if (which parted > /dev/null 2>&1 ); then 
-		echo "parted is installed. Installation can proceed"
-    else 
-		echo "parted must be downloaded !"
-		log "When prompted to install virtual/target-os-dev press N"
-		dev_install
-		emerge parted
-    fi
+	if [ "x$ARCH" != "xarmv7l" ]; then
+	    log "Ensuring the proper paritioning tools are availible"
+	    if (which parted > /dev/null 2>&1 ); then
+			echo "parted is installed. Installation can proceed"
+	    else
+			echo "parted must be downloaded !"
+			log "When prompted to install virtual/target-os-dev press N"
+			dev_install
+			emerge parted
+	    fi
+	fi
 fi
 
-log "Creating volumes on ${DEVICE}"
-for mnt in `mount | grep ${DEVICE} | awk '{print $1}'`;do
-    umount ${mnt}
-done
-parted ${DEVICE} mklabel gpt
-"$cgpt" create -z ${DEVICE}
-"$cgpt" create ${DEVICE}
-"$cgpt" add -i 1 -t kernel -b 8192 -s 32768 -l U-Boot -S 1 -T 5 -P 10 ${DEVICE}
-"$cgpt" add -i 2 -t data -b 40960 -s 32768 -l Kernel ${DEVICE}
-"$cgpt" add -i 12 -t data -b 73728 -s 32768 -l Script ${DEVICE}
-PARTSIZE=`"$cgpt" show ${DEVICE} | grep 'Sec GPT table' | egrep -o '[0-9]+' | head -n 1`
-"$cgpt" add -i 3 -t data -b 106496 -s `expr ${PARTSIZE} - 106496` -l Root ${DEVICE}
-partprobe ${DEVICE}
-mkfs.ext2 $P2
-mkfs.ext4 $P3
-mkfs.vfat -F 16 $P12
+
+if [ "x$ARCH" != "xarmv7l" ]; then
+	log "Creating volumes on ${DEVICE}"
+	for mnt in `mount | grep ${DEVICE} | awk '{print $1}'`;do
+	    umount ${mnt}
+	done
+	parted ${DEVICE} mklabel gpt
+	"$cgpt" create -z ${DEVICE}
+	"$cgpt" create ${DEVICE}
+	"$cgpt" add -i 1 -t kernel -b 8192 -s 32768 -l U-Boot -S 1 -T 5 -P 10 ${DEVICE}
+	"$cgpt" add -i 2 -t data -b 40960 -s 32768 -l Kernel ${DEVICE}
+	"$cgpt" add -i 12 -t data -b 73728 -s 32768 -l Script ${DEVICE}
+	PARTSIZE=`"$cgpt" show ${DEVICE} | grep 'Sec GPT table' | egrep -o '[0-9]+' | head -n 1`
+	"$cgpt" add -i 3 -t data -b 106496 -s `expr ${PARTSIZE} - 106496` -l Root ${DEVICE}
+	partprobe ${DEVICE}
+	mkfs.ext2 $P2
+	mkfs.ext4 $P3
+	mkfs.vfat -F 16 $P12
+else
+	log "Formatting volumes on ${DEVICE}"
+	for mnt in `mount | grep ${DEVICE} | awk '{print $1}'`;do
+	    umount ${mnt}
+	done
+	mkfs.ext2 $P2
+	mkfs.ext4 $P3
+	mkfs.vfat -F 16 $P12
+fi
+
 
 cd /tmp
 
@@ -142,6 +157,11 @@ else
 fi
 
 mkdir -p mnt
+
+if [ ! -f root/boot/vmlinux.uimg ]; then
+	echo "Create vmlinux.uimg from zImage"
+	mkimage -A arm -O linux -T kernel -C none -a 0x40008000 -e 0x40008000 -n Linux -d root/boot/zImage root/boot/vmlinux.uimg
+fi
 
 mount $P2 mnt
 cp root/boot/vmlinux.uimg mnt
