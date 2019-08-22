@@ -162,7 +162,7 @@ mkdir -p mnt
 
 if [ ! -f root/boot/vmlinux.uimg ]; then
 	echo "Create vmlinux.uimg from zImage"
-	mkimage -A arm -O linux -T kernel -C none -a 0x40008000 -e 0x40008000 -n Linux -d root/boot/zImage root/boot/vmlinux.uimg
+	mkimage -A arm -O linux -T kernel -C none -a 0x40009000 -e 0x40009000 -n Linux -d root/boot/zImage root/boot/vmlinux.uimg
 fi
 
 mount $P2 mnt
