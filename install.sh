@@ -113,6 +113,8 @@ else
 	mkfs.vfat -F 16 $P12
 fi
 
+# We will need it later
+cp install.sh /tmp
 
 cd /tmp
 
